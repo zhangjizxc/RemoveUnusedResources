@@ -1,0 +1,75 @@
+#!/bin/bash
+
+if ! which xmlstarlet > /dev/null
+then
+    echo "You need to have the 'xmlstarlet' command in your path"
+    exit
+fi
+
+apps=$1
+CWD=$(pwd)/
+if [ "$apps" = "" ]
+then
+    echo "Please specify the path to an application, or '--all' to process all applications"
+    exit
+elif [ "$apps" = "--all" ]
+then
+    apps=$ANDROID_BUILD_TOP/packages/apps/*
+fi
+
+BASE=$(pwd)/$(dirname $0)
+
+removeUnusedFile()
+{
+    hasXML=false
+    $BASE/findunusedresources -p . > result.txt
+    
+        while read LINE NUM
+        do
+            if [ "Z$LINE" = "Z-----------------------------------------------------------" ]
+            then
+                # skip
+                true
+            elif [ "$LINE" = "$1" ]
+            then
+                # skip
+                true
+            else
+                # try to find the missing resource
+                find res | grep -w $LINE > result2.txt
+                    while read RESLINE
+                    do
+                        if [ -f $RESLINE ]
+                        then
+                            echo REMOVING FILE: $RESLINE
+                            ISXML=$(echo "$RESLINE" | grep "\.xml")
+                            if [ -n "$ISXML" ]
+                            then
+                                hasXML=true
+                            fi
+                            git rm $RESLINE > /dev/null
+                        else
+                            echo WARNING unexpected result for $LINE
+                        fi
+                    done < result2.txt
+                rm -rf result2.txt
+            fi
+        done < result.txt
+    rm -rf result.txt
+    if [ $hasXML = true ]
+    then
+        removeUnusedFile
+    fi
+}
+for app in $apps
+do
+    pushd $app
+    removeUnusedFile $app
+    popd
+done
+echo
+echo "Done."
+echo "Please rebuild the updated applications to make sure that everything still builds."
+echo "After rebuilding, rerun 'findunusedresources' or 'removeunusedresources' to see if any more resources are now unused."
+echo "When you're done, you can 'git commit' the change."
+echo
